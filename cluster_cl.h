@@ -3,6 +3,8 @@
 
 #include <CL/cl.h>
 #include "SiStripConditions.h"
+#include "clppScan_Default.h"
+#include "clppContext.h"
 
 typedef struct {
   cl_mem detId;
@@ -14,6 +16,7 @@ typedef struct {
   cl_mem seedStripsMask;
   cl_mem seedStripsNCMask;
   cl_mem prefixSeedStripsNCMask;
+  clppScan* prefixScan;
   int nSeedStripsNC;
   int nStrips;
 } sst_data_cl_t;
@@ -32,13 +35,14 @@ typedef struct {
   cl_mem barycenter;
 } clust_data_cl_t;
 
-void allocateSSTData_cl(int max_strips, cl_context context, sst_data_cl_t* sst_data_cl);
-void allocateCalibData_cl(int max_strips, cl_context context, calib_data_cl_t* calib_data_cl);
-void allocateClustData_cl(int max_strips, cl_context context, clust_data_cl_t* clust_data_cl);
+void allocateSSTData_cl(int max_strips, clppContext *context, sst_data_cl_t* sst_data_cl);
+void allocateCalibData_cl(int max_strips, clppContext *context, calib_data_cl_t* calib_data_cl);
+void allocateClustData_cl(int max_strips, clppContext *context, clust_data_cl_t* clust_data_cl);
 
-void copyDataToFPGA(cl_command_queue comand_queue, sst_data_t* sst_data, sst_data_cl_t* sst_data_cl, calib_data_t* calib_data, calib_data_cl_t* calib_data_cl);
-void findCluster(cl_program program, cl_command_queue comand_queue, sst_data_cl_t* sst_data_cl, calib_data_cl_t* calib_data_cl, clust_data_cl_t* clust_data_cl);
-void copyDataBackCPU(cl_command_queue comand_queue, clust_data_t* clust_data, clust_data_cl_t* clust_data_cl);
+void copyDataToFPGA(clppContext *context, sst_data_t* sst_data, sst_data_cl_t* sst_data_cl, calib_data_t* calib_data, calib_data_cl_t* calib_data_cl);
+void setSeedStripsNCIndex(clppContext *context, sst_data_cl_t* sst_data_cl, sst_data_t* sst_data, calib_data_cl_t* calib_data_cl, clust_data_cl_t* clust_data_cl);
+void findCluster(clppContext *context, sst_data_cl_t* sst_data_cl, calib_data_cl_t* calib_data_cl, clust_data_cl_t* clust_data_cl);
+void copyDataBackCPU(clppContext *context, clust_data_t* clust_data, clust_data_cl_t* clust_data_cl);
 
 void freeSSTData_cl(sst_data_cl_t* sst_data_cl);
 void freeCalibData_cl(calib_data_cl_t* calib_data_cl);

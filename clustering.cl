@@ -111,3 +111,4 @@ __kernel void checkClusterCondition(int nSeedStripsNC, __global uint16_t* restri
      trueCluster[i] = (adcSum/0.047f) > minGoodCharge;
    }   
 }
+

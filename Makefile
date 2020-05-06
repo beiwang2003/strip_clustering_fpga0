@@ -5,7 +5,9 @@ CC = g++
 CXXFLAGS = -std=c++17 -fPIC -g -DCALIB_1D -DUSE_FPGA -DOUTPUT
 
 SRCS = $(wildcard *.cc)
-OBJS= $(SRCS:.cc=.o)
+OBJS = $(SRCS:.cc=.o)
+
+OCLSRCS = $(wildcard *.cl)
 
 strip-cluster: $(OBJS)
 	$(CC) -o $@ $^ $(AOCL_LINK_CONFIG)
