@@ -5,6 +5,7 @@
 #include "SiStripConditions.h"
 #include "clppScan_Default.h"
 #include "clppContext.h"
+#include "cluster.h"
 
 typedef struct {
   cl_mem detId;
@@ -16,7 +17,7 @@ typedef struct {
   cl_mem seedStripsMask;
   cl_mem seedStripsNCMask;
   cl_mem prefixSeedStripsNCMask;
-  clppScan* prefixScan;
+  //  clppScan* prefixScan;
   int nSeedStripsNC;
   int nStrips;
 } sst_data_cl_t;

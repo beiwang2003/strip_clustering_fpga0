@@ -1,20 +1,12 @@
 #include "clppScan_Default.h"
 
-// Next :
-// 1 - Allow templating
-// 2 - 
-
-#pragma region Constructor
-
 clppScan_Default::clppScan_Default(clppContext* context, size_t valueSize, unsigned int maxElements) :
   clppScan(context, valueSize, maxElements) 
 {
   _clBuffer_values = 0;
   _clBuffer_BlockSums = 0;
-  
-  //	if (!compile(context, "clppScan_Default.cl"))
-  //	return;
-  if (!createProgramFromBinary(context, "clppScan_Default"));
+
+  if (!createProgramFromBinary(context, "clppScan_Default")) return;
   
   //---- Prepare all the kernels
   cl_int clStatus;
@@ -29,7 +21,7 @@ clppScan_Default::clppScan_Default(clppContext* context, size_t valueSize, unsig
   checkCLStatus(clStatus);
   
   //---- Get the workgroup size
-  clGetKernelWorkGroupInfo(_kernel_Scan, _context->clDevice, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &_workgroupSize, 0);
+  //  clGetKernelWorkGroupInfo(_kernel_Scan, _context->clDevice, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &_workgroupSize, 0);
   //_workgroupSize = 128;
   //_workgroupSize = 256;
   _workgroupSize = 512;
@@ -46,10 +38,6 @@ clppScan_Default::~clppScan_Default()
   
   freeBlockSums();
 }
-
-#pragma endregion
-
-#pragma region scan
 
 void clppScan_Default::scan()
 {
@@ -96,10 +84,6 @@ void clppScan_Default::scan()
       checkCLStatus(clStatus);
     }
 }
-
-#pragma endregion
-
-#pragma region pushDatas
 
 void clppScan_Default::pushDatas(void* values, size_t datasetSize)
 {
@@ -183,19 +167,11 @@ void clppScan_Default::pushDatas(cl_mem clBuffer_values, size_t datasetSize)
   _is_clBuffersOwner = false;
 }
 
-#pragma endregion
-
-#pragma region popDatas
-
 void clppScan_Default::popDatas()
 {
   cl_int clStatus = clEnqueueReadBuffer(_context->clQueue, _clBuffer_values, CL_TRUE, 0, _valueSize * _datasetSize, _values, 0, NULL, NULL);
   checkCLStatus(clStatus);
 }
-
-#pragma endregion
-
-#pragma region allocateBlockSums
 
 void clppScan_Default::allocateBlockSums(unsigned int maxElements)
 {
@@ -245,5 +221,3 @@ void clppScan_Default::freeBlockSums()
   _clBuffer_BlockSums = 0;
   _blockSumsSizes = 0;
 }
-
-#pragma endregion

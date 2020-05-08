@@ -6,71 +6,77 @@
 
 using namespace std;
 
-void clppContext::setup()
-{
-	setup(0, 0);
+clppContext::clppContext() {
+  setup(0, 0);
+}
+
+clppContext::~clppContext() {
+  cl_int clStatus;
+  if (clContext)
+    clStatus = clReleaseContext(clContext);
+  assert(clStatus == CL_SUCCESS);
 }
 
 void clppContext::setup(unsigned int platformId, unsigned int deviceId)
 {
-	Vendor = Vendor_Unknown;
-
-	cl_int clStatus;
-
-	size_t infoLen;
-	char infoStr[STRING_BUFFER_LEN];
-	cl_device_type infoType;
-
-	//---- Retreive information about platforms
-	cl_uint platformsCount;
-	clStatus = clGetPlatformIDs(0, NULL, &platformsCount);
-	assert(clStatus == CL_SUCCESS);
-
-	cl_platform_id* platforms = new cl_platform_id[platformsCount];
-	clStatus = clGetPlatformIDs(platformsCount, platforms, NULL);
-	assert(clStatus == CL_SUCCESS);
-
-	platformId = min(platformId, platformsCount - 1);
-	clPlatform = platforms[platformId];
-
-	printf("Querying platform for info:\n");      
-	printf("==========================\n");       
-	clGetPlatformInfo(clPlatform, CL_PLATFORM_NAME, sizeof(infoStr), infoStr, &infoLen);
-	printf("%-40s = %s\n", "CL_PLATFORM_NAME", infoStr);    
-	clGetPlatformInfo(clPlatform, CL_PLATFORM_VENDOR, sizeof(infoStr), infoStr, &infoLen);
-	printf("%-40s = %s\n", "CL_PLATFORM_VENDOR", infoStr);
-        if (stristr(infoStr, "Intel") != NULL)
-	  Vendor = Vendor_Intel;
-        else if (stristr(infoStr, "AMD") != NULL)
-	  Vendor = Vendor_AMD;
-        else if (stristr(infoStr, "NVidia") != NULL)
-	  Vendor = Vendor_NVidia;
-        else if (stristr(infoStr, "Apple") != NULL)
-	  Vendor = Vendor_NVidia;
-	clGetPlatformInfo(clPlatform, CL_PLATFORM_VERSION, sizeof(infoStr), infoStr, &infoLen);
-	printf("%-40s = %s\n\n", "CL_PLATFORM_VERSION ", infoStr);  
-
-	//---- Devices
-	cl_uint devicesCount;
-	clStatus = clGetDeviceIDs(clPlatform, CL_DEVICE_TYPE_ALL, 0, NULL, &devicesCount);
-	assert(clStatus == CL_SUCCESS);
-	assert(devicesCount > 0);
-	
-	cl_device_id* devices = new cl_device_id[devicesCount];
-	clStatus = clGetDeviceIDs(clPlatform, CL_DEVICE_TYPE_ALL, devicesCount, devices, NULL);
-	assert(clStatus == CL_SUCCESS);
-
-	clDevice = devices[min(deviceId, devicesCount - 1)];
-	//---- Display Device info
-	display_device_info(clDevice);
-
-	//---- Context
-	clContext = clCreateContext(0, 1, &clDevice, NULL, NULL, &clStatus);
-	assert(clStatus == CL_SUCCESS);
-
-	//---- Queue
-	clQueue = clCreateCommandQueue(clContext, clDevice, 0, &clStatus);
-	assert(clStatus == CL_SUCCESS);
+  Vendor = Vendor_Unknown;
+  
+  cl_int clStatus;
+  
+  size_t infoLen;
+  char infoStr[STRING_BUFFER_LEN];
+  cl_device_type infoType;
+  
+  //---- Retreive information about platforms
+  cl_uint platformsCount;
+  clStatus = clGetPlatformIDs(0, NULL, &platformsCount);
+  assert(clStatus == CL_SUCCESS);
+  
+  cl_platform_id* platforms = new cl_platform_id[platformsCount];
+  clStatus = clGetPlatformIDs(platformsCount, platforms, NULL);
+  assert(clStatus == CL_SUCCESS);
+  
+  platformId = min(platformId, platformsCount - 1);
+  clPlatform = platforms[platformId];
+  
+  printf("Querying platform for info:\n");      
+  printf("==========================\n");       
+  clGetPlatformInfo(clPlatform, CL_PLATFORM_NAME, sizeof(infoStr), infoStr, &infoLen);
+  printf("%-40s = %s\n", "CL_PLATFORM_NAME", infoStr);    
+  clGetPlatformInfo(clPlatform, CL_PLATFORM_VENDOR, sizeof(infoStr), infoStr, &infoLen);
+  printf("%-40s = %s\n", "CL_PLATFORM_VENDOR", infoStr);
+  if (stristr(infoStr, "Intel") != NULL)
+    Vendor = Vendor_Intel;
+  else if (stristr(infoStr, "AMD") != NULL)
+    Vendor = Vendor_AMD;
+  else if (stristr(infoStr, "NVidia") != NULL)
+    Vendor = Vendor_NVidia;
+  else if (stristr(infoStr, "Apple") != NULL)
+    Vendor = Vendor_NVidia;
+  clGetPlatformInfo(clPlatform, CL_PLATFORM_VERSION, sizeof(infoStr), infoStr, &infoLen);
+  printf("%-40s = %s\n\n", "CL_PLATFORM_VERSION ", infoStr);  
+  
+  //---- Devices
+  cl_uint devicesCount;
+  clStatus = clGetDeviceIDs(clPlatform, CL_DEVICE_TYPE_ALL, 0, NULL, &devicesCount);
+  assert(clStatus == CL_SUCCESS);
+  assert(devicesCount > 0);
+  
+  cl_device_id* devices = new cl_device_id[devicesCount];
+  clStatus = clGetDeviceIDs(clPlatform, CL_DEVICE_TYPE_ALL, devicesCount, devices, NULL);
+  assert(clStatus == CL_SUCCESS);
+  
+  clDevice = devices[min(deviceId, devicesCount - 1)];
+  //---- Display Device info
+  display_device_info(clDevice);
+  
+  //---- Context
+  clContext = clCreateContext(0, 1, &clDevice, NULL, NULL, &clStatus);
+  assert(clStatus == CL_SUCCESS);
+  
+  //---- Queue
+  clQueue = clCreateCommandQueue(clContext, clDevice, 0, &clStatus);
+  assert(clStatus == CL_SUCCESS);
 }
 
 void clppContext::device_info_ulong( cl_device_id device, cl_device_info param, const char* name) {

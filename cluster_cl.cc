@@ -1,7 +1,7 @@
-#include "cluster.h"
 #include "cluster_cl.h"
-#include "ocl_macros.h"
-#include "opencl.h"
+#include "clppScan_Default.h"
+#include "clustering.h"
+#include "findSeedStrips.h"
 
 void allocateSSTData_cl(int max_strips, clppContext *context, sst_data_cl_t* sst_data_cl) {
   cl_int clStatus;
@@ -13,10 +13,9 @@ void allocateSSTData_cl(int max_strips, clppContext *context, sst_data_cl_t* sst
   sst_data_cl->fedCh = clCreateBuffer(context->clContext, CL_MEM_READ_ONLY, max_strips*sizeof(fedCh_t), NULL, &clStatus);
 
   sst_data_cl->seedStripsMask = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, max_strips*sizeof(int), NULL, &clStatus);
-  sst_data_cl->seedStripsNCMask = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE, max_strips*sizeof(int), NULL, &clStatus);
-  sst_data_cl->prefixSeedStripsNCMask = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE, max_strips*sizeof(int), NULL, &clStatus);
-  sst_data_cl->seedStripsNCIndex = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE, max_strips*sizeof(int), NULL, &clStatus);
-  sst_data_cl->prefixScan = new clppScan_Default(context, sizeof(int), max_strips);
+  sst_data_cl->seedStripsNCMask = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, max_strips*sizeof(int), NULL, &clStatus);
+  sst_data_cl->prefixSeedStripsNCMask = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE,  max_strips*sizeof(int), NULL, &clStatus);
+  sst_data_cl->seedStripsNCIndex = clCreateBuffer(context->clContext, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, max_strips*sizeof(int), NULL, &clStatus);
 }
 
 void allocateCalibData_cl(int max_strips, clppContext *context, calib_data_cl_t* calib_data_cl) {
@@ -49,7 +48,6 @@ void freeSSTData_cl(sst_data_cl_t *sst_data_cl) {
   clStatus = clReleaseMemObject(sst_data_cl->seedStripsNCMask);
   clStatus = clReleaseMemObject(sst_data_cl->prefixSeedStripsNCMask);
   clStatus = clReleaseMemObject(sst_data_cl->seedStripsNCIndex);
-  delete sst_data_cl->prefixScan;
 }
 
 void freeCalibData_cl(calib_data_cl_t *calib_data_cl) {
@@ -83,7 +81,6 @@ void copyDataToFPGA(clppContext *context, sst_data_t* sst_data, sst_data_cl_t* s
   clStatus = clEnqueueWriteBuffer(context->clQueue, sst_data_cl->adc, CL_TRUE, 0, nStrips*sizeof(uint8_t), sst_data->adc, 0, NULL, NULL);
   clStatus = clEnqueueWriteBuffer(context->clQueue, sst_data_cl->fedId, CL_TRUE, 0, nStrips*sizeof(fedId_t), sst_data->fedId, 0, NULL, NULL);
   clStatus = clEnqueueWriteBuffer(context->clQueue, sst_data_cl->fedCh, CL_TRUE, 0, nStrips*sizeof(fedCh_t), sst_data->fedCh, 0, NULL, NULL);
-  //  clStatus = clEnqueueWriteBuffer(command_queue, sst_data_cl->seedStripsNCIndex, CL_TRUE, 0, nStrips*sizeof(int), sst_data->seedStripsNCIndex, 0, NULL, NULL);
 
   clStatus = clEnqueueWriteBuffer(context->clQueue, calib_data_cl->noise, CL_TRUE, 0, nStrips*sizeof(float), calib_data->noise, 0, NULL, NULL);
   clStatus = clEnqueueWriteBuffer(context->clQueue, calib_data_cl->gain, CL_TRUE, 0, nStrips*sizeof(float), calib_data->gain, 0, NULL, NULL);
@@ -92,130 +89,31 @@ void copyDataToFPGA(clppContext *context, sst_data_t* sst_data, sst_data_cl_t* s
 
 void setSeedStripsNCIndex(clppContext *context, sst_data_cl_t* sst_data_cl, sst_data_t* sst_data, calib_data_cl_t* calib_data_cl, clust_data_cl_t* clust_data_cl) {
   cl_int clStatus;
-  
-  std::string binary_file = aocl_utils::getBoardBinaryFile("findseedstrips", context->clDevice);
-  printf("Using AOCX: %s\n", binary_file.c_str());
-  cl_program program = aocl_utils::createProgramFromBinary(context->clContext, binary_file.c_str(), &context->clDevice, 1); 
-  // Build the program that was just created.
-  clStatus = clBuildProgram(program, 0, NULL, "", NULL, NULL);
-  LOG_OCL_ERROR(clStatus, "clBuildProgram for findseedstrips failed...");
 
-  const char *kernel_sst = "setSeedStrips";
-  cl_kernel setSeedStrips_kernel = clCreateKernel(program, kernel_sst, &clStatus);
-  LOG_OCL_ERROR(clStatus, "Failed to create setSeedStrips kernel");
-
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 0, sizeof(cl_mem), (void *)&sst_data_cl->stripId);
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 1, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsMask);
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 2, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsNCMask);
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 3, sizeof(cl_mem), (void *)&sst_data_cl->adc);
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 4, sizeof(cl_mem), (void *)&calib_data_cl->noise);
-  clStatus = clSetKernelArg(setSeedStrips_kernel, 5, sizeof(uint16_t), (void *)&invStrip);
-
-  const char *kernel_snst = "setNCSeedStrips";
-  cl_kernel setNCSeedStrips_kernel = clCreateKernel(program, kernel_snst, &clStatus);
-  LOG_OCL_ERROR(clStatus, "Failed to create setNCSeedStrips kernel");
-  clStatus = clSetKernelArg(setNCSeedStrips_kernel, 0, sizeof(cl_mem), (void *)&sst_data_cl->detId);
-  clStatus = clSetKernelArg(setNCSeedStrips_kernel, 1, sizeof(cl_mem), (void *)&sst_data_cl->stripId);
-  clStatus = clSetKernelArg(setNCSeedStrips_kernel, 2, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsMask);
-  clStatus = clSetKernelArg(setNCSeedStrips_kernel, 3, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsNCMask);
-  
-  const char *kernel_ssi = "setStripIndex";
-  cl_kernel setStripIndex_kernel = clCreateKernel(program, kernel_ssi, &clStatus);
-  LOG_OCL_ERROR(clStatus, "Failed to create setStripIndex kernel");
-  clStatus = clSetKernelArg(setStripIndex_kernel, 0, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsNCMask);
-  clStatus = clSetKernelArg(setStripIndex_kernel, 1, sizeof(cl_mem), (void *)&sst_data_cl->prefixSeedStripsNCMask);
-  clStatus = clSetKernelArg(setStripIndex_kernel, 2, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsNCIndex);
-  
-  size_t global_size = sst_data_cl->nStrips;
-  printf("nStrips=%d\n", global_size);
-
-  clStatus = clEnqueueNDRangeKernel(context->clQueue, setSeedStrips_kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-  clStatus = clEnqueueNDRangeKernel(context->clQueue, setNCSeedStrips_kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-  clStatus = clFinish(context->clQueue);
-  clStatus = clEnqueueReadBuffer(context->clQueue, sst_data_cl->seedStripsNCMask, CL_TRUE, 0, sst_data_cl->nStrips*sizeof(int), sst_data->seedStripsNCMask, 0, NULL, NULL);
-  //for (int i=0; i<sst_data_cl->nStrips; i++) {
-  //  std::cout<<" i "<<i<<" mask "<<sst_data->seedStripsNCMask[i]<<std::endl;
-  //}
+  auto setSeedIndex_ptr = std::make_unique<findSeedStrips>(context);
+  setSeedIndex_ptr->setSeedStrips(sst_data_cl, calib_data_cl);
+  setSeedIndex_ptr->setNCSeedStrips(sst_data_cl);
 
   clStatus = clEnqueueCopyBuffer(context->clQueue, sst_data_cl->seedStripsNCMask, sst_data_cl->prefixSeedStripsNCMask, 0, 0, sst_data_cl->nStrips*sizeof(int), 0, NULL, NULL);
-  sst_data_cl->prefixScan->pushDatas(sst_data_cl->prefixSeedStripsNCMask, sst_data_cl->nStrips);
-  sst_data_cl->prefixScan->scan();
-  clStatus = clFinish(context->clQueue);
-  clStatus = clEnqueueReadBuffer(context->clQueue, sst_data_cl->prefixSeedStripsNCMask, CL_TRUE, 0, sst_data_cl->nStrips*sizeof(int), sst_data->prefixSeedStripsNCMask, 0, NULL, NULL); 
-  //for (int i=0; i<sst_data_cl->nStrips; i++) {
-  //  std::cout<<" i "<<i<<" prefix "<<sst_data->prefixSeedStripsNCMask[i]<<std::endl;
-  //}
+  auto prefixScan_ptr = std::make_unique<clppScan_Default>(context, sizeof(int), sst_data_cl->nStrips);
+  prefixScan_ptr->pushDatas(sst_data_cl->prefixSeedStripsNCMask, sst_data_cl->nStrips);
+  prefixScan_ptr->scan();
+  prefixScan_ptr->waitCompletion();
 
-  clStatus = clEnqueueReadBuffer(context->clQueue, sst_data_cl->prefixSeedStripsNCMask, CL_TRUE, (sst_data_cl->nStrips-1)*sizeof(int), sizeof(int), &sst_data_cl->nSeedStripsNC, 0, NULL, NULL);
-  printf("nSeedStripsNC=%d\n", sst_data_cl->nSeedStripsNC);
-
-  clStatus = clEnqueueNDRangeKernel(context->clQueue, setStripIndex_kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-  clStatus = clFinish(context->clQueue);
-  clStatus = clEnqueueReadBuffer(context->clQueue, sst_data_cl->seedStripsNCIndex, CL_TRUE, 0, sst_data_cl->nStrips*sizeof(int), sst_data->seedStripsNCIndex, 0, NULL, NULL);
-
-  if(program)
-    clReleaseProgram(program);
-
-  /*
-  for (int i=0; i<sst_data_cl->nStrips; i++) {
-    if (sst_data->seedStripsNCMask[i])
-    std::cout<<" i "<<i<<" mask "<<sst_data->seedStripsNCMask[i]<<" prefix "<<sst_data->prefixSeedStripsNCMask[i]<<" index "<<sst_data->seedStripsNCIndex[i]<<std::endl;
-  } 
-  */
+  setSeedIndex_ptr->setStripIndex(sst_data_cl);
+  clStatus = clEnqueueReadBuffer(context->clQueue, sst_data_cl->prefixSeedStripsNCMask, CL_TRUE, (sst_data_cl->nStrips-1)*sizeof(int), sizeof(int), &sst_data_cl->nSeedStripsNC, 0, NULL, NULL); 
+  printf("nSeedStripsNC=%d\n", sst_data_cl->nSeedStripsNC); 
+  setSeedIndex_ptr->waitCompletion();
 
 }
 
 void findCluster(clppContext *context, sst_data_cl_t* sst_data_cl, calib_data_cl_t* calib_data_cl, clust_data_cl_t* clust_data_cl) {
-  cl_int clStatus;
 
-  std::string binary_file = aocl_utils::getBoardBinaryFile("clustering", context->clDevice);
-  printf("Using AOCX: %s\n", binary_file.c_str());
-  cl_program program = aocl_utils::createProgramFromBinary(context->clContext, binary_file.c_str(), &context->clDevice, 1);
-  // Build the program that was just created. 
-  clStatus = clBuildProgram(program, 0, NULL, "", NULL, NULL);
-  LOG_OCL_ERROR(clStatus, "clBuildProgram for clustering failed");
+  auto clusters_ptr = std::make_unique<clustering>(context);
+  clusters_ptr->findBoundary(sst_data_cl, calib_data_cl, clust_data_cl);
+  clusters_ptr->checkCondition(sst_data_cl, calib_data_cl, clust_data_cl);
+  clusters_ptr->waitCompletion();
 
-  const char *kernel_name1="findLeftRightBoundary";
-  cl_kernel findBoundary_kernel = clCreateKernel(program, kernel_name1, &clStatus);
-  LOG_OCL_ERROR(clStatus, "Failed to create findLeftRightBoundary kernel");
-
-  clStatus = clSetKernelArg(findBoundary_kernel, 0, sizeof(int),  (void *)&sst_data_cl->nStrips);
-  clStatus = clSetKernelArg(findBoundary_kernel, 1, sizeof(cl_mem), (void *)&sst_data_cl->detId);
-  clStatus = clSetKernelArg(findBoundary_kernel, 2, sizeof(cl_mem), (void *)&sst_data_cl->stripId);
-  clStatus = clSetKernelArg(findBoundary_kernel, 3, sizeof(cl_mem), (void *)&sst_data_cl->adc);
-  clStatus = clSetKernelArg(findBoundary_kernel, 4, sizeof(cl_mem), (void *)&sst_data_cl->seedStripsNCIndex);
-  clStatus = clSetKernelArg(findBoundary_kernel, 5, sizeof(cl_mem), (void *)&calib_data_cl->noise);
-  clStatus = clSetKernelArg(findBoundary_kernel, 6, sizeof(cl_mem), (void *)&clust_data_cl->clusterLastIndexLeft);
-  clStatus = clSetKernelArg(findBoundary_kernel, 7, sizeof(cl_mem), (void *)&clust_data_cl->clusterLastIndexRight);
-  clStatus = clSetKernelArg(findBoundary_kernel, 8, sizeof(cl_mem), (void *)&clust_data_cl->trueCluster);
-  LOG_OCL_ERROR(clStatus, "Failed to set kernel arguments for findboundary_kernel" );
-
-  const char *kernel_name2="checkClusterCondition";
-  cl_kernel checkCondition_kernel = clCreateKernel(program, kernel_name2, &clStatus);
-  LOG_OCL_ERROR(clStatus, "Failed to create checkClusterCondition kernel");
-
-  clStatus = clSetKernelArg(checkCondition_kernel, 0, sizeof(int),  (void *)&sst_data_cl->nSeedStripsNC);
-  clStatus = clSetKernelArg(checkCondition_kernel, 1, sizeof(cl_mem), (void *)&sst_data_cl->stripId);
-  clStatus = clSetKernelArg(checkCondition_kernel, 2, sizeof(cl_mem), (void *)&sst_data_cl->adc);
-  clStatus = clSetKernelArg(checkCondition_kernel, 3, sizeof(cl_mem),  (void *)&calib_data_cl->gain);
-  clStatus = clSetKernelArg(checkCondition_kernel, 4, sizeof(cl_mem), (void *)&clust_data_cl->clusterLastIndexLeft);
-  clStatus = clSetKernelArg(checkCondition_kernel, 5, sizeof(cl_mem), (void *)&clust_data_cl->clusterLastIndexRight);
-  clStatus = clSetKernelArg(checkCondition_kernel, 6, sizeof(cl_mem), (void *)&clust_data_cl->trueCluster);
-  clStatus = clSetKernelArg(checkCondition_kernel, 7, sizeof(cl_mem), (void *)&clust_data_cl->clusterADCs);
-  clStatus = clSetKernelArg(checkCondition_kernel, 8, sizeof(cl_mem), (void *)&clust_data_cl->barycenter);
-  LOG_OCL_ERROR(clStatus, "Failed to set kernel arguments for checkCondition_kernel" );
-
-  size_t global_size = sst_data_cl->nSeedStripsNC;
-
-  clStatus = clEnqueueNDRangeKernel(context->clQueue, findBoundary_kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-  clStatus = clEnqueueNDRangeKernel(context->clQueue, checkCondition_kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-
-  // Clean up and wait for all the comands to complete.
-  clStatus = clFinish(context->clQueue);
-  clStatus = clReleaseKernel(findBoundary_kernel);
-  clStatus = clReleaseKernel(checkCondition_kernel);
-  if(program)
-    clReleaseProgram(program);
 }
 
 void copyDataBackCPU(clppContext *context, clust_data_t* clust_data, clust_data_cl_t* clust_data_cl){

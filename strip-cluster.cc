@@ -7,7 +7,7 @@
 #ifdef USE_FPGA
 #include <CL/cl.h>
 #include "cluster_cl.h"
-#include "opencl.h"
+//#include "opencl.h"
 #endif 
 
 int main()
@@ -24,7 +24,6 @@ int main()
 
 #ifdef USE_FPGA
   clppContext context;
-  context.setup(0, 0);
 
   auto sst_data_cl_ptr = std::make_unique<sst_data_cl_t>();
   auto clust_data_cl_ptr = std::make_unique<clust_data_cl_t>();
